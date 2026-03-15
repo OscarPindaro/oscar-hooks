@@ -1,0 +1,22 @@
+[project]
+name = "oscar-hooks"
+version = "0.1.0"
+description = "Pre-commit hooks for security and config validation"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "rich>=14.3.3",
+    "typer>=0.24.1",
+]
+
+[project.optional-dependencies]
+pydantic-yaml-guard = [
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "pyyaml>=6.0.3",
+]
+telegram-token-guard = []
+
+[project.scripts]
+pydantic-yaml-guard = "oscar_hooks.pydantic_yaml_guard:cli"
+telegram-token-guard = "oscar_hooks.telegram_token_guard:cli"

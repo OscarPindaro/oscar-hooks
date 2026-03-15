@@ -1,0 +1,26 @@
+- id: pydantic-yaml-guard
+  name: Check YAML configs for pydantic secret fields
+  entry: pydantic-yaml-guard
+  language: python
+  types: [yaml]
+  stages:
+    - pre-commit
+    - pre-merge-commit
+    - pre-push
+    - manual
+  additional_dependencies:
+    - pydantic>=2.12.5
+    - pydantic-settings>=2.13.1
+    - pyyaml>=6.0.3
+
+- id: telegram-token-guard
+  name: Detect Telegram bot tokens
+  entry: telegram-token-guard
+  language: python
+  types_or: [python, yaml, json, text, markdown]
+  stages:
+    - pre-commit
+    - pre-merge-commit
+    - pre-push
+    - manual
+  additional_dependencies: []
