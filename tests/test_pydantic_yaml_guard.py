@@ -109,3 +109,93 @@ def test_check_files_clean_yaml(tmp_yaml_without_secret):
     secret_paths = {"postgres.password", "postgres.POSTGRES_PASSWORD"}
     errors = check_files([tmp_yaml_without_secret], secret_paths)
     assert errors == []
+
+
+def test_partial_import_with_relative_import(tmp_path):
+    """Simulates the real project structure: config.py imports from base_config.py,
+    base_config.py crashes on instantiation (YamlConfigSettingsSource)."""
+
+    base = tmp_path / "base_config.py"
+    base.write_text(textwrap.dedent("""
+        from pydantic_settings import BaseSettings, SettingsConfigDict
+
+        class AppConfig(BaseSettings):
+            model_config = SettingsConfigDict(
+                yaml_file="config.yaml",
+                extra="ignore",
+            )
+            # Simulate crash when the class is used/imported in certain contexts
+            def __init_subclass__(cls, **kwargs):
+                super().__init_subclass__(**kwargs)
+                # This would normally trigger source loading, simulating the crash
+    """))
+
+    config = tmp_path / "config.py"
+    config.write_text(textwrap.dedent("""
+        from pydantic import Field, SecretStr
+        from base_config import AppConfig
+
+        class PostgresConfig(AppConfig):
+            user: str = Field(alias="POSTGRES_USER")
+            password: SecretStr = Field(alias="POSTGRES_PASSWORD")
+            host: str = Field(default="localhost", alias="POSTGRES_HOST")
+            port: int = Field(default=5432, alias="POSTGRES_PORT")
+            db: str = Field(alias="POSTGRES_DB")
+
+        class APIConfig(AppConfig):
+            postgres: PostgresConfig = Field(default_factory=PostgresConfig)
+
+        raise RuntimeError("simulated YamlConfigSettingsSource crash")
+    """))
+
+    module = _import_module_from_path(config)
+    assert module is not None
+    assert hasattr(module, "APIConfig")
+
+    classes = find_settings_classes([config])
+    names = [cls.__name__ for cls in classes]
+    assert "APIConfig" in names
+
+    paths = set()
+    for cls in classes:
+        paths |= get_secret_dotpaths(cls)
+    assert "postgres.password" in paths
+
+
+def test_full_pipeline_with_nested_secret_in_yaml(tmp_path):
+    """End-to-end: crashing config module + YAML with nested password = error reported."""
+
+    config = tmp_path / "config.py"
+    config.write_text(textwrap.dedent("""
+        from pydantic import Field, SecretStr
+        from pydantic_settings import BaseSettings
+
+        class PostgresConfig(BaseSettings):
+            user: str = Field(alias="POSTGRES_USER")
+            password: SecretStr = Field(alias="POSTGRES_PASSWORD")
+
+        class APIConfig(BaseSettings):
+            postgres: PostgresConfig = Field(default_factory=PostgresConfig)
+
+        raise RuntimeError("simulated crash")
+    """))
+
+    yaml_file = tmp_path / "config.yaml"
+    yaml_file.write_text(textwrap.dedent("""
+        postgres:
+          user: root_admin
+          password: mypassword
+          host: localhost
+          port: 5432
+          db: mydb
+    """))
+
+    classes = find_settings_classes([config])
+    all_paths = set()
+    for cls in classes:
+        all_paths |= get_secret_dotpaths(cls)
+
+    assert "postgres.password" in all_paths
+
+    errors = check_files([yaml_file], all_paths)
+    assert any("postgres.password" in e for e in errors), f"Expected violation, got: {errors}"
