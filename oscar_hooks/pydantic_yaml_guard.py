@@ -222,25 +222,47 @@ def _iter_python_files(paths: list[Path]) -> list[Path]:
 def _import_module_from_path(filepath: Path) -> object | None:
     """Import a Python module from a file path. Returns None on failure."""
     filepath = filepath.resolve()
-    module_name = f"_pydantic_yaml_guard_.{filepath.stem}_{id(filepath)}"
-    spec = importlib.util.spec_from_file_location(module_name, filepath)
+    parent_dir = str(filepath.parent)
+
+    # Use a package-aware module name so relative imports work
+    package_name = f"_pydantic_yaml_guard_pkg_{id(filepath)}"
+    module_name = f"{package_name}.{filepath.stem}"
+
+    # Register a fake parent package so relative imports resolve
+    import types
+    parent_pkg = types.ModuleType(package_name)
+    parent_pkg.__path__ = [parent_dir]
+    parent_pkg.__package__ = package_name
+    sys.modules[package_name] = parent_pkg
+
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        filepath,
+        submodule_search_locations=None,
+    )
     if spec is None or spec.loader is None:
         return None
+
     module = importlib.util.module_from_spec(spec)
-    parent_dir = str(filepath.parent)
+    module.__package__ = package_name
+
     added = False
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
         added = True
+
     try:
         spec.loader.exec_module(module)  # type: ignore[union-attr]
     except Exception as e:
         print_warning(f"Could not fully import {filepath}: {e} — attempting partial inspection")
-        return module  # <-- return partial module instead of None
+        return module
     finally:
         if added and parent_dir in sys.path:
             sys.path.remove(parent_dir)
+        sys.modules.pop(package_name, None)
+
     return module
+
 def find_settings_classes(paths: list[Path]) -> list[type[BaseSettings]]:
     """Return all BaseSettings subclasses found in the given paths."""
     classes: list[type[BaseSettings]] = []
@@ -417,3 +439,4 @@ def cli() -> None:
     except Exception as exc:
         print_error(f"Unexpected error: {exc}")
         sys.exit(EXIT_ERROR)
+
