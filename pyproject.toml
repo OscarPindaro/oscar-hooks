@@ -5,11 +5,15 @@ description = "Pre-commit hooks for security and config validation"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "pytest>=9.0.2",
     "rich>=14.3.3",
     "typer>=0.24.1",
 ]
 
 [project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+]
 pydantic-yaml-guard = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
@@ -20,3 +24,7 @@ telegram-token-guard = []
 [project.scripts]
 pydantic-yaml-guard = "oscar_hooks.pydantic_yaml_guard:cli"
 telegram-token-guard = "oscar_hooks.telegram_token_guard:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

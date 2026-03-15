@@ -234,14 +234,13 @@ def _import_module_from_path(filepath: Path) -> object | None:
         added = True
     try:
         spec.loader.exec_module(module)  # type: ignore[union-attr]
-    except Exception:
-        return None
+    except Exception as e:
+        print_warning(f"Could not fully import {filepath}: {e} — attempting partial inspection")
+        return module  # <-- return partial module instead of None
     finally:
         if added and parent_dir in sys.path:
             sys.path.remove(parent_dir)
     return module
-
-
 def find_settings_classes(paths: list[Path]) -> list[type[BaseSettings]]:
     """Return all BaseSettings subclasses found in the given paths."""
     classes: list[type[BaseSettings]] = []
